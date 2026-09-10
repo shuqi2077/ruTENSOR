@@ -1,7 +1,7 @@
 use crate::{BinaryOp, ComputeType, Error, ReductionOp, Result, UnaryOp};
 use crate::operation::Kind;
 use ruda_core::tensor::{DType, TensorMetadata};
-use ruda_kernel::dsl as cubecl;
+use ruda_kernel::dsl as kernel_dsl;
 use ruda_kernel::dsl::prelude::*;
 use ruda_kernel::library::FastDivmod;
 use ruda_kernel::tensor::{RudaTensor, allocation::empty_device_contiguous_dtype};
@@ -14,7 +14,7 @@ pub(crate) struct Config {
     pub addend: bool,
 }
 
-#[cube]
+#[ruda]
 fn unary<F: Float>(x: F, #[comptime] op: UnaryOp) -> F {
     match op {
         UnaryOp::Identity | UnaryOp::Conjugate => x,
@@ -31,7 +31,7 @@ fn unary<F: Float>(x: F, #[comptime] op: UnaryOp) -> F {
     }
 }
 
-#[cube]
+#[ruda]
 fn binary<F: Float>(a: F, b: F, #[comptime] op: BinaryOp) -> F {
     match op {
         BinaryOp::Add => a + b,
@@ -52,7 +52,7 @@ fn binary<F: Float>(a: F, b: F, #[comptime] op: BinaryOp) -> F {
     }
 }
 
-#[cube]
+#[ruda]
 fn identity<F: Float>(#[comptime] op: ReductionOp) -> F {
     match op {
         ReductionOp::Sum => F::new(0.0),
@@ -62,7 +62,7 @@ fn identity<F: Float>(#[comptime] op: ReductionOp) -> F {
     }
 }
 
-#[cube]
+#[ruda]
 fn fold<F: Float>(a: F, b: F, #[comptime] op: ReductionOp) -> F {
     match op {
         ReductionOp::Sum => a + b,
@@ -72,7 +72,7 @@ fn fold<F: Float>(a: F, b: F, #[comptime] op: ReductionOp) -> F {
     }
 }
 
-#[cube]
+#[ruda]
 fn read<F: Float>(
     input: &Tensor<F>, strides: &Sequence<usize>,
     output_shape: &Sequence<FastDivmod<usize>>,
@@ -102,7 +102,7 @@ fn read<F: Float>(
     unary::<F>(input[offset], op)
 }
 
-#[cube]
+#[ruda]
 fn output_offset(
     output_index: usize, shape: &Sequence<FastDivmod<usize>>, strides: &Sequence<usize>,
 ) -> usize {
@@ -118,7 +118,7 @@ fn output_offset(
     offset
 }
 
-#[cube]
+#[ruda]
 fn product_term<F: Float>(
     inputs: &Sequence<Tensor<F>>, strides: &Sequence<usize>,
     output_shape: &Sequence<FastDivmod<usize>>, reduction_shape: &Sequence<FastDivmod<usize>>,
@@ -134,7 +134,7 @@ fn product_term<F: Float>(
     value
 }
 
-#[cube]
+#[ruda]
 fn epilogue<F: Float>(
     value: F, inputs: &Sequence<Tensor<F>>, strides: &Sequence<usize>,
     output_shape: &Sequence<FastDivmod<usize>>, reduction_shape: &Sequence<FastDivmod<usize>>,
@@ -154,7 +154,7 @@ fn epilogue<F: Float>(
     result
 }
 
-#[cube(launch, address_type = "dynamic")]
+#[ruda(launch, address_type = "dynamic")]
 fn pointwise<F: Float, O: Float>(
     inputs: Sequence<Tensor<F>>, output: &mut Tensor<O>,
     strides: Sequence<usize>, output_strides: Sequence<usize>,
@@ -188,7 +188,7 @@ fn pointwise<F: Float, O: Float>(
     output[output_offset(index, &output_shape, &output_strides)] = O::cast_from(value);
 }
 
-#[cube(launch, address_type = "dynamic")]
+#[ruda(launch, address_type = "dynamic")]
 fn aggregate<F: Float, O: Float>(
     inputs: Sequence<Tensor<F>>, output: &mut Tensor<O>,
     strides: Sequence<usize>, output_strides: Sequence<usize>,
@@ -211,9 +211,9 @@ fn aggregate<F: Float, O: Float>(
     }
     let mut shared = SharedMemory::<F>::new(threads);
     shared[lane] = value;
-    let mut step = CUBE_DIM as usize / 2;
+    let mut step = RUDA_DIM as usize / 2;
     while step > 0 {
-        sync_cube();
+        sync_ruda();
         if lane < step {
             shared[lane] = fold::<F>(shared[lane], shared[lane + step], reduction);
         }
@@ -226,7 +226,7 @@ fn aggregate<F: Float, O: Float>(
     }
 }
 
-#[cube(launch, address_type = "dynamic")]
+#[ruda(launch, address_type = "dynamic")]
 fn convert<I: Float, O: Float>(
     input: &Tensor<I>, output: &mut Tensor<O>,
     shape: Sequence<FastDivmod<usize>>, count: usize,
@@ -246,10 +246,10 @@ fn convert<I: Float, O: Float>(
     output[index] = O::cast_from(input[offset]);
 }
 
-fn grid<R: Runtime>(client: &ComputeClient<R>, units: usize, dim: CubeDim) -> Result<(CubeCount, AddressType)> {
+fn grid<R: Runtime>(client: &ComputeClient<R>, units: usize, dim: RudaDim) -> Result<(RudaCount, AddressType)> {
     let threads = dim.num_elems() as usize;
     let groups = units.div_ceil(threads);
-    let limits = client.properties().hardware.max_cube_count;
+    let limits = client.properties().hardware.max_ruda_count;
     if limits.0 == 0 || limits.1 == 0 || limits.2 == 0 {
         return Err(Error::UnsupportedDevice("empty dispatch grid".into()));
     }
@@ -262,7 +262,7 @@ fn grid<R: Runtime>(client: &ComputeClient<R>, units: usize, dim: CubeDim) -> Re
     }
     let launched = x.checked_mul(y).and_then(|n| n.checked_mul(z))
         .and_then(|n| n.checked_mul(threads)).ok_or(Error::Overflow)?;
-    Ok((CubeCount::Static(x as u32, y as u32, z as u32), AddressType::from_len(launched)))
+    Ok((RudaCount::Static(x as u32, y as u32, z as u32), AddressType::from_len(launched)))
 }
 
 pub(crate) fn convert_operand<R: Runtime>(input: &RudaTensor<R>, dtype: DType) -> Result<RudaTensor<R>> {
@@ -270,9 +270,9 @@ pub(crate) fn convert_operand<R: Runtime>(input: &RudaTensor<R>, dtype: DType) -
     let count = input.meta.num_elements();
     count.checked_mul(dtype.size()).ok_or(Error::Overflow)?;
     let output = empty_device_contiguous_dtype(input.client.clone(), input.device.clone(), input.shape(), dtype);
-    let dim = CubeDim::new(input.client.properties(), count);
-    let (cube_count, address) = grid(&input.client, count, dim)?;
-    convert::launch(&input.client, cube_count, dim,
+    let dim = RudaDim::new(input.client.properties(), count);
+    let (ruda_count, address) = grid(&input.client, count, dim)?;
+    convert::launch(&input.client, ruda_count, dim,
         address.max(input.required_address_type()).max(output.required_address_type()),
         input.clone().into_tensor_arg(), output.clone().into_tensor_arg(),
         input.meta.shape().iter().copied().collect::<SequenceArg<R, FastDivmod<usize>>>(),
@@ -318,19 +318,19 @@ impl<R: Runtime> Launch<'_, R> {
             .max(AddressType::from_len(self.count.max(self.reduction_count)))
             .max(AddressType::from_len(self.count * self.threads));
         if self.reduction_extents.is_empty() {
-            let dim = CubeDim::new(client.properties(), self.count);
-            let (cube_count, grid_address) = grid(client, self.count, dim)?;
-            pointwise::launch::<F, R>(client, cube_count, dim,
+            let dim = RudaDim::new(client.properties(), self.count);
+            let (ruda_count, grid_address) = grid(client, self.count, dim)?;
+            pointwise::launch::<F, R>(client, ruda_count, dim,
                 address.max(grid_address), inputs, self.output.clone().into_tensor_arg(), strides, output_strides,
                 output_shape, reduction_shape, scalars, self.count, self.config, self.output.dtype.into());
         } else {
-            let dim = CubeDim::new_1d(self.threads as u32);
+            let dim = RudaDim::new_1d(self.threads as u32);
             let reduction = match self.config.kind {
                 Kind::Reduction(op) => op,
                 _ => ReductionOp::Sum,
             };
-            let (cube_count, grid_address) = grid(client, self.count * self.threads, dim)?;
-            aggregate::launch::<F, R>(client, cube_count, dim,
+            let (ruda_count, grid_address) = grid(client, self.count * self.threads, dim)?;
+            aggregate::launch::<F, R>(client, ruda_count, dim,
                 address.max(grid_address), inputs, self.output.clone().into_tensor_arg(), strides, output_strides,
                 output_shape, reduction_shape, scalars, self.count, self.reduction_count,
                 self.threads, reduction, self.config, self.output.dtype.into());

@@ -133,8 +133,8 @@ impl Plan {
         let count = self.operation.output.num_elements();
         if count == 0 { return Ok(output); }
         let hardware = &output.client.properties().hardware;
-        let mut maximum = (hardware.max_cube_dim.0 as usize)
-            .min(hardware.max_units_per_cube as usize).min(128);
+        let mut maximum = (hardware.max_ruda_dim.0 as usize)
+            .min(hardware.max_units_per_ruda as usize).min(128);
         if !self.reduction_extents.is_empty() {
             maximum = maximum.min(hardware.max_shared_memory_size / self.operation.compute.dtype().size());
         }
