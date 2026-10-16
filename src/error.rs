@@ -2,7 +2,7 @@ use std::fmt;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// Errors detected before a device operation is submitted.
+/// Errors detected while planning or submitting a device operation.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Error {
     InvalidDescriptor(String),
@@ -19,6 +19,7 @@ pub enum Error {
     SharedOutput,
     BufferTooSmall,
     UnsupportedDevice(String),
+    Launch(String),
 }
 
 impl fmt::Display for Error {
@@ -39,6 +40,7 @@ impl fmt::Display for Error {
             Self::SharedOutput => f.write_str("execute_into requires an exclusively owned output buffer"),
             Self::BufferTooSmall => f.write_str("tensor layout exceeds its backing buffer"),
             Self::UnsupportedDevice(s) => write!(f, "unsupported device configuration: {s}"),
+            Self::Launch(s) => write!(f, "tensor operation launch failed: {s}"),
         }
     }
 }

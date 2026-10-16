@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use crate::{ComputeType, Error, Mode, OperandDescriptor, OperationDescriptor, Plan, Result, TensorDescriptor};
 use crate::plan::merge_extent;
 use ruda_core::tensor::DType;
+use ruda_core::device::Device;
 use ruda_kernel::{dsl::Runtime, tensor::RudaTensor};
 
 #[derive(Clone, Debug)]
@@ -62,6 +63,7 @@ pub(crate) fn infer_output(inputs: &[OperandDescriptor], modes: &[Mode], dtype: 
 pub struct EinsumPlan {
     expression: String,
     plan: Plan,
+    path: Option<crate::path::ContractionPath>,
 }
 
 impl EinsumPlan {
@@ -125,19 +127,47 @@ impl EinsumPlan {
             (output_dtype(&operands), ComputeType::for_operands(&operands)));
         let output = infer_output(&operands, &output_modes, dtype)?;
         let operation = OperationDescriptor::sum_product(operands, None, output, &output_modes, compute)?;
-        Ok(Self { expression, plan: Plan::new(operation)? })
+        Ok(Self { expression, plan: Plan::new(operation)?, path: None })
     }
 
     pub fn expression(&self) -> &str { &self.expression }
     pub fn plan(&self) -> &Plan { &self.plan }
     pub fn output(&self) -> &TensorDescriptor { self.plan.operation().output() }
 
+    /// Choose a minimum-product binary contraction tree by exhaustive subset dynamic programming.
+    /// Search is exponential in operand count. Reassociation changes floating-point operation order;
+    /// intermediates use the declared compute dtype and only the final output is cast to its dtype.
+    pub fn optimize(mut self) -> Result<Self> {
+        if self.plan.operation().inputs().len() > 1 {
+            self.path = Some(crate::path::ContractionPath::new(self.plan.operation())?);
+        }
+        Ok(self)
+    }
+
+    pub fn planned_scalar_products(&self) -> Option<u128> {
+        self.path.as_ref().map(|path| path.products)
+    }
+
     pub fn execute<R: Runtime>(&self, inputs: &[&RudaTensor<R>]) -> Result<RudaTensor<R>> {
-        self.plan.execute(inputs, &[1.0])
+        if let Some(path) = &self.path {
+            self.plan.validate_inputs(inputs, &[1.0])?;
+            path.execute(inputs)
+        } else {
+            self.plan.execute(inputs, &[1.0])
+        }
     }
 
     pub fn execute_into<R: Runtime>(&self, inputs: &[&RudaTensor<R>], output: RudaTensor<R>) -> Result<RudaTensor<R>> {
-        self.plan.execute_into(inputs, output, &[1.0])
+        if let Some(path) = &self.path {
+            self.plan.validate_inputs(inputs, &[1.0])?;
+            if !self.output().matches(&output) { return Err(Error::OutputMismatch); }
+            self.output().check_buffer(&output)?;
+            if inputs[0].device.to_id() != output.device.to_id() { return Err(Error::DeviceMismatch); }
+            if !output.can_mut() { return Err(Error::SharedOutput); }
+            path.execute_into(inputs, output)
+        } else {
+            self.plan.execute_into(inputs, output, &[1.0])
+        }
     }
 }
 

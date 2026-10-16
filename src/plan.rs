@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use crate::{Error, Mode, OperationDescriptor, Result};
 use crate::descriptor::product;
-use crate::kernel::{Config, Launch, convert_operand};
+use crate::kernel::{Config, Launch};
 use crate::operation::Kind;
 use ruda_core::{device::Device, tensor::{Metadata, Shape}};
 use ruda_kernel::{dsl::Runtime, tensor::RudaTensor};
@@ -112,7 +112,7 @@ impl Plan {
         self.submit(inputs, output, scalars)
     }
 
-    fn validate_inputs<R: Runtime>(&self, inputs: &[&RudaTensor<R>], scalars: &[f64]) -> Result<()> {
+    pub(crate) fn validate_inputs<R: Runtime>(&self, inputs: &[&RudaTensor<R>], scalars: &[f64]) -> Result<()> {
         if inputs.len() != self.operation.inputs.len() {
             return Err(Error::InputCount { expected: self.operation.inputs.len(), actual: inputs.len() });
         }
@@ -132,6 +132,16 @@ impl Plan {
     ) -> Result<RudaTensor<R>> {
         let count = self.operation.output.num_elements();
         if count == 0 { return Ok(output); }
+        if let Some(product) = crate::matmul::try_product(&self.operation, inputs)? {
+            let operand = crate::OperandDescriptor::from_tensor(&product, &self.operation.output_modes)?;
+            let addend = self.operation.addend.then(|| self.operation.inputs[self.operation.terms].clone());
+            let finish = OperationDescriptor::reduction(operand, addend,
+                self.operation.output.clone(), &self.operation.output_modes,
+                crate::ReductionOp::Sum, self.operation.compute)?;
+            let mut finish_inputs = vec![&product];
+            if self.operation.addend { finish_inputs.push(inputs[self.operation.terms]); }
+            return Plan::new(finish)?.execute_into(&finish_inputs, output, scalars);
+        }
         let hardware = &output.client.properties().hardware;
         let mut maximum = (hardware.max_ruda_dim.0 as usize)
             .min(hardware.max_units_per_ruda as usize).min(128);
@@ -145,11 +155,10 @@ impl Plan {
         let threads = 1usize << desired.ilog2();
         count.checked_mul(threads).ok_or(Error::Overflow)?;
         let compute = self.operation.compute;
-        let converted = inputs.iter().map(|input| convert_operand(input, compute.dtype()))
-            .collect::<Result<Vec<_>>>()?;
+        let bound: Vec<_> = inputs.iter().map(|input| (*input).clone()).collect();
         let stride_count = self.modes.len().checked_mul(inputs.len()).ok_or(Error::Overflow)?;
         let mut strides = vec![0usize; stride_count];
-        for (operand, tensor) in converted.iter().enumerate() {
+        for (operand, tensor) in bound.iter().enumerate() {
             for (axis, &mode) in self.axis_modes[operand].iter().enumerate() {
                 if tensor.meta.shape()[axis] != 1 {
                     let position = operand * self.modes.len() + mode;
@@ -159,13 +168,17 @@ impl Plan {
             }
         }
         Launch {
-            inputs: &converted, output: &output, strides,
+            inputs: &bound, output: &output, strides,
             reduction_extents: &self.reduction_extents, scalars, count,
             reduction_count: self.reduction_count, threads, compute,
             config: Config {
                 kind: self.operation.kind,
                 unary: self.operation.inputs.iter().map(|x| x.unary).collect(),
                 terms: self.operation.terms, addend: self.operation.addend,
+                storage: inputs.iter().map(|input| input.dtype).collect(),
+                slots: inputs.iter().enumerate().map(|(i, input)|
+                    inputs[..i].iter().filter(|previous| previous.dtype == input.dtype).count()
+                ).collect(),
             },
         }.submit()?;
         Ok(output)

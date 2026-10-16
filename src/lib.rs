@@ -7,6 +7,8 @@ mod descriptor;
 mod einsum;
 mod error;
 mod kernel;
+mod matmul;
+mod path;
 mod operation;
 mod plan;
 mod tensor;

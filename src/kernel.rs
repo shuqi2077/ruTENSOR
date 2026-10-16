@@ -1,10 +1,19 @@
 use crate::{BinaryOp, ComputeType, Error, ReductionOp, Result, UnaryOp};
 use crate::operation::Kind;
+use half::{bf16, f16};
 use ruda_core::tensor::{DType, TensorMetadata};
 use ruda_kernel::dsl as kernel_dsl;
 use ruda_kernel::dsl::prelude::*;
 use ruda_kernel::library::FastDivmod;
-use ruda_kernel::tensor::{RudaTensor, allocation::empty_device_contiguous_dtype};
+use ruda_kernel::tensor::RudaTensor;
+
+#[derive(RudaLaunch, RudaType)]
+pub(crate) struct Operands {
+    f16_values: Sequence<Tensor<f16>>,
+    bf16_values: Sequence<Tensor<bf16>>,
+    f32_values: Sequence<Tensor<f32>>,
+    f64_values: Sequence<Tensor<f64>>,
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct Config {
@@ -12,6 +21,8 @@ pub(crate) struct Config {
     pub unary: Vec<UnaryOp>,
     pub terms: usize,
     pub addend: bool,
+    pub storage: Vec<DType>,
+    pub slots: Vec<usize>,
 }
 
 #[ruda]
@@ -74,11 +85,11 @@ fn fold<F: Float>(a: F, b: F, #[comptime] op: ReductionOp) -> F {
 
 #[ruda]
 fn read<F: Float>(
-    input: &Tensor<F>, strides: &Sequence<usize>,
+    inputs: &Operands, strides: &Sequence<usize>,
     output_shape: &Sequence<FastDivmod<usize>>,
     reduction_shape: &Sequence<FastDivmod<usize>>,
     output_index: usize, reduction_index: usize,
-    #[comptime] operand: usize, #[comptime] op: UnaryOp,
+    #[comptime] operand: usize, #[comptime] config: Config,
 ) -> F {
     let output_rank = comptime![output_shape.len()];
     let rank = comptime![output_rank + reduction_shape.len()];
@@ -99,7 +110,15 @@ fn read<F: Float>(
         position = rest;
         offset += coordinate * strides[operand * rank + output_rank + axis];
     }
-    unary::<F>(input[offset], op)
+    let slot = comptime![config.slots[operand]];
+    let value = match comptime![config.storage[operand]] {
+        DType::F16 => F::cast_from(inputs.f16_values.index(slot)[offset]),
+        DType::BF16 => F::cast_from(inputs.bf16_values.index(slot)[offset]),
+        DType::F32 => F::cast_from(inputs.f32_values.index(slot)[offset]),
+        DType::F64 => F::cast_from(inputs.f64_values.index(slot)[offset]),
+        _ => unreachable!("validated operand storage"),
+    };
+    unary::<F>(value, comptime![config.unary[operand]])
 }
 
 #[ruda]
@@ -120,23 +139,23 @@ fn output_offset(
 
 #[ruda]
 fn product_term<F: Float>(
-    inputs: &Sequence<Tensor<F>>, strides: &Sequence<usize>,
+    inputs: &Operands, strides: &Sequence<usize>,
     output_shape: &Sequence<FastDivmod<usize>>, reduction_shape: &Sequence<FastDivmod<usize>>,
     output_index: usize, reduction_index: usize, #[comptime] config: Config,
 ) -> F {
-    let mut value = read::<F>(inputs.index(0usize), strides, output_shape, reduction_shape,
-        output_index, reduction_index, 0usize, comptime![config.unary[0]]);
+    let mut value = read::<F>(inputs, strides, output_shape, reduction_shape,
+        output_index, reduction_index, 0usize, config.clone());
     #[unroll]
     for operand in 1..config.terms {
-        value *= read::<F>(inputs.index(operand), strides, output_shape, reduction_shape,
-            output_index, reduction_index, operand, comptime![config.unary[operand]]);
+        value *= read::<F>(inputs, strides, output_shape, reduction_shape,
+            output_index, reduction_index, operand, config.clone());
     }
     value
 }
 
 #[ruda]
 fn epilogue<F: Float>(
-    value: F, inputs: &Sequence<Tensor<F>>, strides: &Sequence<usize>,
+    value: F, inputs: &Operands, strides: &Sequence<usize>,
     output_shape: &Sequence<FastDivmod<usize>>, reduction_shape: &Sequence<FastDivmod<usize>>,
     scalars: &Sequence<InputScalar>, output_index: usize, #[comptime] config: Config,
 ) -> F {
@@ -145,9 +164,9 @@ fn epilogue<F: Float>(
         let beta = scalars[1].get::<F>();
         // A zero beta does not read C, including when C contains NaNs.
         if beta != F::new(0.0) {
-            let addend = read::<F>(inputs.index(config.terms), strides, output_shape,
+            let addend = read::<F>(inputs, strides, output_shape,
                 reduction_shape, output_index, 0, config.terms,
-                comptime![config.unary[config.terms]]);
+                config.clone());
             result += beta * addend;
         }
     }
@@ -156,7 +175,7 @@ fn epilogue<F: Float>(
 
 #[ruda(launch, address_type = "dynamic")]
 fn pointwise<F: Float, O: Float>(
-    inputs: Sequence<Tensor<F>>, output: &mut Tensor<O>,
+    inputs: Operands, output: &mut Tensor<O>,
     strides: Sequence<usize>, output_strides: Sequence<usize>,
     output_shape: Sequence<FastDivmod<usize>>, reduction_shape: Sequence<FastDivmod<usize>>,
     scalars: Sequence<InputScalar>, count: usize,
@@ -167,14 +186,14 @@ fn pointwise<F: Float, O: Float>(
     let mut value = F::new(0.0);
     match config.kind {
         Kind::Elementwise(op_ab, op_abc) => {
-            let a = scalars[0].get::<F>() * read::<F>(inputs.index(0usize), &strides,
-                &output_shape, &reduction_shape, index, 0, 0usize, comptime![config.unary[0]]);
-            let b = scalars[1].get::<F>() * read::<F>(inputs.index(1usize), &strides,
-                &output_shape, &reduction_shape, index, 0, 1usize, comptime![config.unary[1]]);
+            let a = scalars[0].get::<F>() * read::<F>(&inputs, &strides,
+                &output_shape, &reduction_shape, index, 0, 0usize, config.clone());
+            let b = scalars[1].get::<F>() * read::<F>(&inputs, &strides,
+                &output_shape, &reduction_shape, index, 0, 1usize, config.clone());
             value = binary::<F>(a, b, op_ab);
             if comptime![config.terms == 3] {
-                let c = scalars[2].get::<F>() * read::<F>(inputs.index(2usize), &strides,
-                    &output_shape, &reduction_shape, index, 0, 2usize, comptime![config.unary[2]]);
+                let c = scalars[2].get::<F>() * read::<F>(&inputs, &strides,
+                    &output_shape, &reduction_shape, index, 0, 2usize, config.clone());
                 value = binary::<F>(value, c, op_abc);
             }
         }
@@ -190,7 +209,7 @@ fn pointwise<F: Float, O: Float>(
 
 #[ruda(launch, address_type = "dynamic")]
 fn aggregate<F: Float, O: Float>(
-    inputs: Sequence<Tensor<F>>, output: &mut Tensor<O>,
+    inputs: Operands, output: &mut Tensor<O>,
     strides: Sequence<usize>, output_strides: Sequence<usize>,
     output_shape: Sequence<FastDivmod<usize>>, reduction_shape: Sequence<FastDivmod<usize>>,
     scalars: Sequence<InputScalar>, count: usize, reduction_count: usize,
@@ -226,26 +245,6 @@ fn aggregate<F: Float, O: Float>(
     }
 }
 
-#[ruda(launch, address_type = "dynamic")]
-fn convert<I: Float, O: Float>(
-    input: &Tensor<I>, output: &mut Tensor<O>,
-    shape: Sequence<FastDivmod<usize>>, count: usize,
-    #[define(I, O)] _dtypes: [StorageType; 2],
-) {
-    let index = ABSOLUTE_POS;
-    if index >= count { terminate!(); }
-    let mut position = index;
-    let mut offset = 0usize;
-    #[unroll]
-    for axis in 0..shape.len() {
-        let axis = comptime![shape.len() - axis - 1];
-        let (rest, coordinate) = shape[axis].div_mod(position);
-        position = rest;
-        offset += coordinate * input.stride(axis);
-    }
-    output[index] = O::cast_from(input[offset]);
-}
-
 fn grid<R: Runtime>(client: &ComputeClient<R>, units: usize, dim: RudaDim) -> Result<(RudaCount, AddressType)> {
     let threads = dim.num_elems() as usize;
     let groups = units.div_ceil(threads);
@@ -263,21 +262,6 @@ fn grid<R: Runtime>(client: &ComputeClient<R>, units: usize, dim: RudaDim) -> Re
     let launched = x.checked_mul(y).and_then(|n| n.checked_mul(z))
         .and_then(|n| n.checked_mul(threads)).ok_or(Error::Overflow)?;
     Ok((RudaCount::Static(x as u32, y as u32, z as u32), AddressType::from_len(launched)))
-}
-
-pub(crate) fn convert_operand<R: Runtime>(input: &RudaTensor<R>, dtype: DType) -> Result<RudaTensor<R>> {
-    if input.dtype == dtype || input.meta.shape().contains(&0) { return Ok(input.clone()); }
-    let count = input.meta.num_elements();
-    count.checked_mul(dtype.size()).ok_or(Error::Overflow)?;
-    let output = empty_device_contiguous_dtype(input.client.clone(), input.device.clone(), input.shape(), dtype);
-    let dim = RudaDim::new(input.client.properties(), count);
-    let (ruda_count, address) = grid(&input.client, count, dim)?;
-    convert::launch(&input.client, ruda_count, dim,
-        address.max(input.required_address_type()).max(output.required_address_type()),
-        input.clone().into_tensor_arg(), output.clone().into_tensor_arg(),
-        input.meta.shape().iter().copied().collect::<SequenceArg<R, FastDivmod<usize>>>(),
-        count, [input.dtype.into(), dtype.into()]);
-    Ok(output)
 }
 
 pub(crate) struct Launch<'a, R: Runtime> {
@@ -303,8 +287,16 @@ impl<R: Runtime> Launch<'_, R> {
 
     fn submit_typed<F: Float>(self) -> Result<()> {
         let client = &self.output.client;
-        let inputs = self.inputs.iter().map(|x| x.clone().into_tensor_arg())
-            .collect::<SequenceArg<R, Tensor<F>>>();
+        let inputs = OperandsLaunch::new(
+            self.inputs.iter().filter(|x| x.dtype == DType::F16)
+                .map(|x| x.clone().into_tensor_arg()).collect::<SequenceArg<R, Tensor<f16>>>(),
+            self.inputs.iter().filter(|x| x.dtype == DType::BF16)
+                .map(|x| x.clone().into_tensor_arg()).collect::<SequenceArg<R, Tensor<bf16>>>(),
+            self.inputs.iter().filter(|x| x.dtype == DType::F32)
+                .map(|x| x.clone().into_tensor_arg()).collect::<SequenceArg<R, Tensor<f32>>>(),
+            self.inputs.iter().filter(|x| x.dtype == DType::F64)
+                .map(|x| x.clone().into_tensor_arg()).collect::<SequenceArg<R, Tensor<f64>>>(),
+        );
         let strides = self.strides.into_iter().collect::<SequenceArg<R, usize>>();
         let output_strides = self.output.meta.strides().iter().copied().collect::<SequenceArg<R, usize>>();
         let output_shape = self.output.meta.shape().iter().map(|&d| d.max(1))
