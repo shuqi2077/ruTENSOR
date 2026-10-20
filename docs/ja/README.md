@@ -8,12 +8,12 @@ Ruda デバイス テンソルのテンソル線形代数: 収縮と einsum、�
 
 - Cargo パッケージ: `ruTENSOR`
 - Rust クレート: `rutensor`
-- [英語ユーザーガイド](../../../../docs/ja/libraries/rutensor.md)
-- [中文使用文档](../../../../docs/zh/libraries/rutensor.md)
+- [英語ユーザーガイド](../../../docs/ja/libraries/rutensor.md)
+- [中文使用文档](../../../docs/zh/libraries/rutensor.md)
 
 ## ruTENSOR ユーザーガイド
 
-[計算ライブラリ](../../../../docs/ja/libraries/README.md) · [Tensor フレームワーク](../../../../docs/ja/tensor-framework.md) · [中文](../zh/README.md)
+[計算ライブラリ](../../../docs/ja/libraries/README.md) · [Tensor フレームワーク](../../../docs/ja/tensor-framework.md) · [中文](../zh/README.md)
 
 ruTENSOR は、名前付き軸テンソル縮約、リダクション、物理的置換、および要素ごとの操作を提供します。入力は `RudaTensor<R>` を使用します。アプリケーションはデバイスのランタイムを選択します。このライブラリは、上位レベルの `ruda-tensor` フレームワークとは異なります。
 
@@ -23,10 +23,10 @@ Cargo パッケージは `ruTENSOR` です。 Rust インポート名は `rutens
 
 ```toml
 [dependencies]
-rutensor = { package = "ruTENSOR", path = "../RUDA/crates/ruTENSOR" }
-ruda-core = { path = "../RUDA/crates/ruda-core", default-features = false, features = ["std", "tensor-host-data"] }
-ruda-kernel = { path = "../RUDA/crates/ruda-kernel", default-features = false, features = ["frontend-std", "device-tensor"] }
-ruda-driver-cuda = { path = "../RUDA/crates/ruda-driver-cuda", default-features = false, features = ["std"] }
+rutensor = { package = "ruTENSOR", path = "../RUDA/ruTENSOR" }
+ruda-core = { path = "../RUDA/ruda-core", default-features = false, features = ["std", "tensor-host-data"] }
+ruda-kernel = { path = "../RUDA/ruda-kernel", default-features = false, features = ["frontend-std", "device-tensor"] }
+ruda-driver-cuda = { path = "../RUDA/ruda-driver-cuda", default-features = false, features = ["std"] }
 ```
 
 ### 2. 縮約、帰約、置換

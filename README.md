@@ -1,6 +1,6 @@
 # ruTENSOR
 
-**English** | [简体中文](https://github.com/shuqi2077/RUDA/blob/main/crates/ruTENSOR/docs/zh/README.md) | [日本語](https://github.com/shuqi2077/RUDA/blob/main/crates/ruTENSOR/docs/ja/README.md) | [Deutsch](https://github.com/shuqi2077/RUDA/blob/main/crates/ruTENSOR/docs/de/README.md) | [Русский](https://github.com/shuqi2077/RUDA/blob/main/crates/ruTENSOR/docs/ru/README.md)
+**English** | [简体中文](https://github.com/shuqi2077/RUDA/blob/main/ruTENSOR/docs/zh/README.md) | [日本語](https://github.com/shuqi2077/RUDA/blob/main/ruTENSOR/docs/ja/README.md) | [Deutsch](https://github.com/shuqi2077/RUDA/blob/main/ruTENSOR/docs/de/README.md) | [Русский](https://github.com/shuqi2077/RUDA/blob/main/ruTENSOR/docs/ru/README.md)
 
 Tensor linear algebra for Ruda device tensors: contractions and einsum, reductions, physical permutations, and elementwise operations.
 
@@ -11,7 +11,7 @@ Tensor linear algebra for Ruda device tensors: contractions and einsum, reductio
 
 ## ruTENSOR User Guide
 
-[Compute libraries](https://github.com/shuqi2077/RUDA/blob/main/docs/en/libraries/README.md) · [Tensor framework](https://github.com/shuqi2077/RUDA/blob/main/docs/en/tensor-framework.md) · [中文](https://github.com/shuqi2077/RUDA/blob/main/crates/ruTENSOR/docs/zh/README.md)
+[Compute libraries](https://github.com/shuqi2077/RUDA/blob/main/docs/en/libraries/README.md) · [Tensor framework](https://github.com/shuqi2077/RUDA/blob/main/docs/en/tensor-framework.md) · [中文](https://github.com/shuqi2077/RUDA/blob/main/ruTENSOR/docs/zh/README.md)
 
 ruTENSOR provides named-axis tensor contractions, reductions, physical permutations, and elementwise operations. Inputs use `RudaTensor<R>`; the application selects a device Runtime. This library is distinct from the higher-level `ruda-tensor` framework.
 
@@ -21,10 +21,10 @@ The Cargo package is `ruTENSOR`; the Rust import name is `rutensor`. Defaults en
 
 ```toml
 [dependencies]
-rutensor = { package = "ruTENSOR", path = "../RUDA/crates/ruTENSOR" }
-ruda-core = { path = "../RUDA/crates/ruda-core", default-features = false, features = ["std", "tensor-host-data"] }
-ruda-kernel = { path = "../RUDA/crates/ruda-kernel", default-features = false, features = ["frontend-std", "device-tensor"] }
-ruda-driver-cuda = { path = "../RUDA/crates/ruda-driver-cuda", default-features = false, features = ["std"] }
+rutensor = { package = "ruTENSOR", path = "../RUDA/ruTENSOR" }
+ruda-core = { path = "../RUDA/ruda-core", default-features = false, features = ["std", "tensor-host-data"] }
+ruda-kernel = { path = "../RUDA/ruda-kernel", default-features = false, features = ["frontend-std", "device-tensor"] }
+ruda-driver-cuda = { path = "../RUDA/ruda-driver-cuda", default-features = false, features = ["std"] }
 ```
 
 ### 2. Contraction, reduction, and permutation
