@@ -8,12 +8,12 @@
 
 - Cargo пакет: `ruTENSOR`
 - Крейт Rust: `rutensor`
-- [Руководство пользователя на английском языке](../../../docs/ru/libraries/rutensor.md)
-- [中文使用文档](../../../docs/zh/libraries/rutensor.md)
+- [Руководство пользователя на английском языке](../../../../docs/ru/libraries/rutensor.md)
+- [中文使用文档](../../../../docs/zh/libraries/rutensor.md)
 
 ## ruTENSOR Руководство пользователя
 
-[Вычислительные библиотеки](../../../docs/ru/libraries/README.md) · [Тензорная платформа](../../../docs/ru/tensor-framework.md) · [中文](../zh/README.md)
+[Вычислительные библиотеки](../../../../docs/ru/libraries/README.md) · [Тензорная платформа](../../../../docs/ru/tensor-framework.md) · [中文](../zh/README.md)
 
 ruTENSOR обеспечивает сжатие тензоров по именованным осям, сокращения, физические перестановки и поэлементные операции. Входы используют `RudaTensor<R>`; приложение выбирает устройство Runtime. Эта библиотека отличается от платформы более высокого уровня `ruda-tensor`.
 
@@ -23,10 +23,10 @@ ruTENSOR обеспечивает сжатие тензоров по имено�
 
 ```toml
 [dependencies]
-rutensor = { package = "ruTENSOR", path = "../RUDA/ruTENSOR" }
-ruda-core = { path = "../RUDA/ruda-core", default-features = false, features = ["std", "tensor-host-data"] }
-ruda-kernel = { path = "../RUDA/ruda-kernel", default-features = false, features = ["frontend-std", "device-tensor"] }
-ruda-driver-cuda = { path = "../RUDA/ruda-driver-cuda", default-features = false, features = ["std"] }
+rutensor = { package = "ruTENSOR", path = "../RUDA/crates/ruTENSOR" }
+ruda-core = { path = "../RUDA/crates/ruda-core", default-features = false, features = ["std", "tensor-host-data"] }
+ruda-kernel = { path = "../RUDA/crates/ruda-kernel", default-features = false, features = ["frontend-std", "device-tensor"] }
+ruda-driver-cuda = { path = "../RUDA/crates/ruda-driver-cuda", default-features = false, features = ["std"] }
 ```
 
 ### 2. Свёртка тензоров, редукция и перестановка

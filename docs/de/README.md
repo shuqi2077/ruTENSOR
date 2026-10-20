@@ -8,12 +8,12 @@ Tensorlineare Algebra für Ruda-Gerätetensoren: Kontraktionen und einsum, Reduk
 
 - Cargo Paket: `ruTENSOR`
 - Rostkiste: `rutensor`
-- [Englisches Benutzerhandbuch](../../../docs/de/libraries/rutensor.md)
-- [中文使用文档](../../../docs/zh/libraries/rutensor.md)
+- [Englisches Benutzerhandbuch](../../../../docs/de/libraries/rutensor.md)
+- [中文使用文档](../../../../docs/zh/libraries/rutensor.md)
 
 ## ruTENSOR Benutzerhandbuch
 
-[Computerbibliotheken](../../../docs/de/libraries/README.md) · [Tensor-Framework](../../../docs/de/tensor-framework.md) · [中文](../zh/README.md)
+[Computerbibliotheken](../../../../docs/de/libraries/README.md) · [Tensor-Framework](../../../../docs/de/tensor-framework.md) · [中文](../zh/README.md)
 
 ruTENSOR bietet Tensorkontraktionen, Reduktionen, physikalische Permutationen und elementweise Operationen mit benannten Achsen. Eingaben verwenden `RudaTensor<R>`; Die Anwendung wählt eine Gerätelaufzeit aus. Diese Bibliothek unterscheidet sich vom übergeordneten `ruda-tensor`-Framework.
 
@@ -23,10 +23,10 @@ Das Cargo-Paket ist `ruTENSOR`; Der Rust-Importname lautet `rutensor`. Die Stand
 
 ```toml
 [dependencies]
-rutensor = { package = "ruTENSOR", path = "../RUDA/ruTENSOR" }
-ruda-core = { path = "../RUDA/ruda-core", default-features = false, features = ["std", "tensor-host-data"] }
-ruda-kernel = { path = "../RUDA/ruda-kernel", default-features = false, features = ["frontend-std", "device-tensor"] }
-ruda-driver-cuda = { path = "../RUDA/ruda-driver-cuda", default-features = false, features = ["std"] }
+rutensor = { package = "ruTENSOR", path = "../RUDA/crates/ruTENSOR" }
+ruda-core = { path = "../RUDA/crates/ruda-core", default-features = false, features = ["std", "tensor-host-data"] }
+ruda-kernel = { path = "../RUDA/crates/ruda-kernel", default-features = false, features = ["frontend-std", "device-tensor"] }
+ruda-driver-cuda = { path = "../RUDA/crates/ruda-driver-cuda", default-features = false, features = ["std"] }
 ```
 
 ### 2. Kontraktion, Reduktion und Permutation
