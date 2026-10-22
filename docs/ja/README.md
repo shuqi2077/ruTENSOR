@@ -26,7 +26,7 @@ Cargo パッケージは `ruTENSOR` です。 Rust インポート名は `rutens
 rutensor = { package = "ruTENSOR", path = "../RUDA/ruTENSOR" }
 ruda-core = { path = "../RUDA/ruda-core", default-features = false, features = ["std", "tensor-host-data"] }
 ruda-kernel = { path = "../RUDA/ruda-kernel", default-features = false, features = ["frontend-std", "device-tensor"] }
-ruda-driver-cuda = { path = "../RUDA/ruda-driver-cuda", default-features = false, features = ["std"] }
+ruda-driver-cuda = { path = "../RUDA/ruda-driver/cuda", default-features = false, features = ["std"] }
 ```
 
 ### 2. 縮約、帰約、置換

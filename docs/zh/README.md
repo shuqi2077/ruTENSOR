@@ -24,7 +24,7 @@ Cargo package 为 `ruTENSOR`，Rust 导入名为 `rutensor`。默认启用 `std`
 rutensor = { package = "ruTENSOR", path = "../RUDA/ruTENSOR" }
 ruda-core = { path = "../RUDA/ruda-core", default-features = false, features = ["std", "tensor-host-data"] }
 ruda-kernel = { path = "../RUDA/ruda-kernel", default-features = false, features = ["frontend-std", "device-tensor"] }
-ruda-driver-cuda = { path = "../RUDA/ruda-driver-cuda", default-features = false, features = ["std"] }
+ruda-driver-cuda = { path = "../RUDA/ruda-driver/cuda", default-features = false, features = ["std"] }
 ```
 
 ### 2. 张量收缩、归约和置换
